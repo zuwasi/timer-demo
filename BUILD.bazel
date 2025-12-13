@@ -1,0 +1,19 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "Timer",
+    srcs = [
+        "clock.c",
+        "driver.c",
+        "stdinout.c",
+        "timer.c",
+        "clock.h",
+        "consts.h",
+        "inout.h",
+        "timer.h"
+    ],
+    # copts = [ "-DSTDINPUT" ],
+)
+
+# Define configuration file for C/C++test instrumentation engine (cpptestcc).
+filegroup(name = "cpptestcc-bazel-psrc", srcs = ["cpptestcc-bazel.psrc"])

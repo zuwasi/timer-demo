@@ -1,0 +1,10 @@
+bazel_dep(
+    name = "cpptest",
+)
+
+local_path_override(
+    module_name = "cpptest",
+    path = "../..",
+)
+
+bazel_dep(name = "rules_cc", version = "0.0.9")
