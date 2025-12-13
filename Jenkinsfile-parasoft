@@ -28,11 +28,10 @@ pipeline {
                     ${CPPTEST_HOME}/cpptestcli \
                     -config "builtin://MISRA C 2012" \
                     -compiler gcc_13-64 \
-                    -sources . \
-                    -include "*.c,*.h" \
-                    -exclude "*.o" \
-                    -report "${WORKSPACE}/parasoft_report" \
-                    -publish
+                    -module . \
+                    -include "${WORKSPACE}/*.c" \
+                    -include "${WORKSPACE}/*.h" \
+                    -report "${WORKSPACE}/parasoft_report"
                 '''
             }
         }
