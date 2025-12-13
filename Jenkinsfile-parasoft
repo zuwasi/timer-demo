@@ -26,21 +26,27 @@ pipeline {
                 echo "Running Parasoft C++test analysis"
                 sh '''
                     WINDOWS_IP=$(ip route | grep default | awk '{print $3}')
+                    
+                    # Create custom license config
+                    cat > ${WORKSPACE}/license.properties << EOF
+parasoft.eula.accepted=true
+cpptest.license.use_network=true
+license.network.url=https://${WINDOWS_IP}:8443
+license.network.use.specified.server=true
+license.network.auth.enabled=true
+license.network.user=admin
+license.network.password=admin
+cpptest.license.network.edition=server_compliance_edition
+EOF
+                    
                     ${CPPTEST_HOME}/cpptestcli \
+                    -localsettings ${WORKSPACE}/license.properties \
                     -config "builtin://Recommended Rules" \
                     -compiler gcc_13-64 \
                     -module . \
                     -include "${WORKSPACE}/*.c" \
                     -include "${WORKSPACE}/*.h" \
-                    -report "${WORKSPACE}/parasoft_report" \
-                    -property parasoft.eula.accepted=true \
-                    -property cpptest.license.use_network=true \
-                    -property license.network.url=https://${WINDOWS_IP}:8443 \
-                    -property license.network.use.specified.server=true \
-                    -property license.network.auth.enabled=true \
-                    -property license.network.user=admin \
-                    -property license.network.password=admin \
-                    -property cpptest.license.network.edition=server_compliance_edition
+                    -report "${WORKSPACE}/parasoft_report"
                 '''
             }
         }
