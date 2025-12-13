@@ -26,7 +26,7 @@ pipeline {
                 echo "Running Parasoft C++test analysis"
                 sh '''
                     ${CPPTEST_HOME}/cpptestcli \
-                    -config "builtin://MISRA C 2012" \
+                    -config "builtin://Flow Analysis Standard" \
                     -compiler gcc_13-64 \
                     -module . \
                     -include "${WORKSPACE}/*.c" \
