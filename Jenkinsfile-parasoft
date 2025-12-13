@@ -27,12 +27,13 @@ pipeline {
                 sh '''
                     WINDOWS_IP=$(ip route | grep default | awk '{print $3}')
                     ${CPPTEST_HOME}/cpptestcli \
-                    -config "builtin://Flow Analysis Standard" \
+                    -config "builtin://Recommended Rules" \
                     -compiler gcc_13-64 \
                     -module . \
                     -include "${WORKSPACE}/*.c" \
                     -include "${WORKSPACE}/*.h" \
                     -report "${WORKSPACE}/parasoft_report" \
+                    -property parasoft.eula.accepted=true \
                     -property cpptest.license.use_network=true \
                     -property license.network.url=https://${WINDOWS_IP}:8443 \
                     -property license.network.use.specified.server=true \
