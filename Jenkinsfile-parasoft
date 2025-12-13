@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    
+    environment {
+        CPPTEST_HOME = '/mnt/c/Users/danie/parasoft-std/cpptest'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Pulling latest code from GitHub"
+                git branch: 'main', url: 'https://github.com/zuwasi/timer-demo'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo "Building timer application"
+                sh 'make clean'
+                sh 'make'
+            }
+        }
+        
+        stage('Parasoft Analysis') {
+            steps {
+                echo "Running Parasoft C++test analysis"
+                sh '''
+                    ${CPPTEST_HOME}/cpptestcli \
+                    -config "builtin://MISRA C 2012" \
+                    -compiler gcc_13-64 \
+                    -sources . \
+                    -include "*.c,*.h" \
+                    -exclude "*.o" \
+                    -report "${WORKSPACE}/parasoft_report" \
+                    -publish
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'parasoft_report/**/*', allowEmptyArchive: true
+        }
+        success {
+            echo 'Analysis completed successfully!'
+        }
+        failure {
+            echo 'Analysis failed!'
+        }
+    }
+}
