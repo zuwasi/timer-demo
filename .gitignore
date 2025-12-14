@@ -1,0 +1,19 @@
+# Build artifacts
+build/
+*.o
+*.exe
+timer
+
+# IDE
+.vscode/
+
+# Parasoft
+.cpptest/
+reports/
+*.bdf
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json

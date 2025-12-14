@@ -1,0 +1,18 @@
+# Define 'cpptest_bdf' configuration to generate .BDF file.
+#
+# To use the configuration, execute Bazel build:
+# > bazel run --config=cpptest_bdf
+
+build:cpptest_bdf @cpptest//:bdf --@cpptest//:target=//:Timer --@cpptest//:compiler-config=gcc_10-64
+
+# Define 'cpptest_coverage' configuration to enable coverage analysis.
+#
+# To use the configuration, execute Bazel build:
+# > bazel run --config=cpptest_coverage
+#
+# Notes:
+# 1. Be sure 'cpptestcc-bazel-psrc' file group was defined in BUILD.bazel.
+# 2. Use 'cpptestcc-bazel.psrc' file for configuring options for the code instrumentation engine (cpptestcc).
+
+build:cpptest_coverage @cpptest//:coverage --@cpptest//:target=//:Timer --@cpptest//:psrc_file=//:cpptestcc-bazel-psrc
+
