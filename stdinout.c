@@ -1,17 +1,25 @@
-
 /* 
- * Implements routines from inout.h for stdin/stdout
+ * Implements routines from inout.h for STM32WB5x UART I/O
+ * 
+ * EMBEDDED VERSION:
+ * This file replaces stdin/stdout with UART1 communication
+ * for the STM32WB55 microcontroller.
  */
 
 #include "inout.h"
 #include "consts.h"
 
 #include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
+
+/* 
+ * External UART functions from system_stm32wb5x.c
+ */
+extern void uart_putchar(char c);
+extern void uart_puts(const char *str);
+extern int uart_getchar_blocking(void);
 
 /*
- * Grabs input from stdin
+ * Grabs input from UART
  * 
  * FIX: BD-PB-EOFCOMP - EOF comparison issue
  * =========================================
@@ -38,47 +46,90 @@
  * This allows proper detection of EOF (-1) vs valid characters (0-255).
  * Only cast to 'char' when storing in the buffer after validation.
  * 
- * IMPACT:
- * - Prevents infinite loops when input ends (Ctrl+Z on Windows, Ctrl+D on Linux)
- * - Prevents infinite loops when using piped/redirected input
- * - Correctly distinguishes EOF from valid byte 0xFF
+ * EMBEDDED NOTE:
+ * On embedded systems, EOF is less common but the same principle applies
+ * for detecting special control characters or connection loss.
  */
 int get_input_digit()
 {
     /*
      * FIXED: Changed from 'char c' to 'int c'
-     * getchar() returns int to accommodate EOF (-1) plus all valid char values (0-255)
+     * uart_getchar_blocking() returns int to accommodate all valid char values
      */
     int c;
     int i;
     char buf[BUF_SIZE];
 
-    fflush(stdout);
     for (i = 0; i < BUF_SIZE - 1; i++) {
-        c = getchar();
+        c = uart_getchar_blocking();
+        
+        /* Echo character back to terminal */
+        if (c >= 32 && c < 127) {
+            uart_putchar((char)c);
+        }
+        
         /*
-         * Now EOF comparison works correctly because 'c' is an int.
-         * If getchar() returns EOF (-1), this comparison will be true.
+         * Now comparison works correctly because 'c' is an int.
          */
-        if (c == '\n' || c == EOF) {
+        if (c == '\n' || c == '\r' || c < 0) {
+            uart_puts("\r\n");
             break;
         } else if (isdigit(c)) {
             /*
              * Cast to char only when storing - at this point we know
-             * c is a valid digit character (0-9), not EOF
+             * c is a valid digit character (0-9)
              */
             buf[i] = (char)c;
         }
     }
     
     buf[i] = '\0';
-    return atoi(buf);
+    return simple_atoi(buf);
 }
 
 /*
- * Print string to stdout
+ * Simple atoi implementation for embedded (no stdlib dependency)
+ */
+int simple_atoi(const char *str)
+{
+    int result = 0;
+    int sign = 1;
+    
+    /* Skip whitespace */
+    while (*str == ' ' || *str == '\t') {
+        str++;
+    }
+    
+    /* Handle sign */
+    if (*str == '-') {
+        sign = -1;
+        str++;
+    } else if (*str == '+') {
+        str++;
+    }
+    
+    /* Convert digits */
+    while (*str >= '0' && *str <= '9') {
+        result = result * 10 + (*str - '0');
+        str++;
+    }
+    
+    return sign * result;
+}
+
+/*
+ * Print string to UART
  */
 int print_string(char* str)
 {
-    return (printf(str));
+    int count = 0;
+    while (*str) {
+        if (*str == '\n') {
+            uart_putchar('\r');
+            count++;
+        }
+        uart_putchar(*str++);
+        count++;
+    }
+    return count;
 }

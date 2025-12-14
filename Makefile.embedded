@@ -1,0 +1,71 @@
+# Makefile for Timer application - STM32WB5x Embedded Version
+# Uses ARM GCC toolchain
+
+# Toolchain path
+ARM_GCC_PATH = C:/arm-gcc/arm-gnu-toolchain-13.2.Rel1-mingw-w64-i686-arm-none-eabi/bin
+
+# Toolchain
+CC = $(ARM_GCC_PATH)/arm-none-eabi-gcc
+AS = $(ARM_GCC_PATH)/arm-none-eabi-as
+LD = $(ARM_GCC_PATH)/arm-none-eabi-ld
+OBJCOPY = $(ARM_GCC_PATH)/arm-none-eabi-objcopy
+OBJDUMP = $(ARM_GCC_PATH)/arm-none-eabi-objdump
+SIZE = $(ARM_GCC_PATH)/arm-none-eabi-size
+
+# Target
+TARGET = timer_stm32wb5
+
+# MCU flags
+MCU = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+
+# Compiler flags
+CFLAGS = $(MCU) -Wall -Wextra -pedantic -std=c99 -g -O2
+CFLAGS += -ffunction-sections -fdata-sections
+CFLAGS += -DSTM32WB55xx -DARM_MATH_CM4
+
+# Linker flags
+LDFLAGS = $(MCU) -Tstm32wb5x_flash.ld
+LDFLAGS += -Wl,--gc-sections
+LDFLAGS += -nostartfiles -nodefaultlibs -nostdlib
+LDFLAGS += --specs=nosys.specs
+
+# Source files
+SOURCES = \
+    startup_stm32wb55xx.c \
+    system_stm32wb5x.c \
+    clock.c \
+    driver.c \
+    timer.c \
+    stdinout.c
+
+# Object files
+OBJECTS = $(SOURCES:.c=.o)
+
+# Include paths
+INCLUDES = -I.
+
+.PHONY: all clean size flash
+
+all: $(TARGET).elf $(TARGET).hex $(TARGET).bin size
+
+$(TARGET).elf: $(OBJECTS)
+	$(CC) $(LDFLAGS) -o $@ $^
+
+$(TARGET).hex: $(TARGET).elf
+	$(OBJCOPY) -O ihex $< $@
+
+$(TARGET).bin: $(TARGET).elf
+	$(OBJCOPY) -O binary $< $@
+
+%.o: %.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
+
+size: $(TARGET).elf
+	$(SIZE) $<
+
+clean:
+	del /Q *.o $(TARGET).elf $(TARGET).hex $(TARGET).bin 2>nul || exit 0
+
+# Flash with ST-Link (requires STM32CubeProgrammer in PATH)
+flash: $(TARGET).bin
+	STM32_Programmer_CLI -c port=SWD -w $< 0x08000000 -v -rst

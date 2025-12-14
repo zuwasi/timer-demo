@@ -1,101 +1,102 @@
-
 /*
- * Timer class, stores timer records-
- * Modified By Daniel Liezrowice 12/12/2025
+ * Timer class, stores timer records
+ * STM32WB5x Embedded Version - No stdlib dependencies
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stdint.h>
+#include <stddef.h>
 
 #include "clock.h"
 #include "consts.h"
 #include "inout.h"
 #include "timer.h"
 
-
+static struct timer_record timer_storage[BUF_SIZE];
 static struct timer_record* timer_records[BUF_SIZE];
 const int max_records = BUF_SIZE;
 static int curr_index = 0;
 
-void init_timer()
+/* Simple memset for embedded */
+static void embedded_memset(void *ptr, int value, size_t num)
 {
-    memset(timer_records, 0, sizeof(struct timer_record*) * BUF_SIZE); 
+    unsigned char *p = (unsigned char *)ptr;
+    while (num--) {
+        *p++ = (unsigned char)value;
+    }
 }
 
-void uninit_timer()
+void init_timer(void)
 {
-    /* Remove all timer records */
     int i;
-
-    for (i = 0; i < max_records; i++) {
-        delete_timer_record(i);
+    for (i = 0; i < BUF_SIZE; i++) {
+        timer_records[i] = NULL;
     }
+    curr_index = 0;
+}
+
+void uninit_timer(void)
+{
+    int i;
+    for (i = 0; i < max_records; i++) {
+        timer_records[i] = NULL;
+    }
+    curr_index = 0;
 }
 
 /*
  * Queries user for timer information
+ * Returns pointer to statically allocated timer record
  */
-struct timer_record* query_user()
+struct timer_record* query_user(void)
 {
-    int start_h, start_m, end_h, end_m;
     struct timer_record* the_record;
-    time_t timer;
-    struct tm* tm_tmp;
-
-    timer = time(NULL);
-    tm_tmp = localtime(&timer);
     
-    the_record = (struct timer_record*)malloc(sizeof(struct timer_record));
-    memset(the_record, 0, sizeof(struct timer_record));
+    if (curr_index >= max_records) {
+        return NULL;
+    }
+    
+    the_record = &timer_storage[curr_index];
+    embedded_memset(the_record, 0, sizeof(struct timer_record));
     
     /* starttime */
     print_string("Please enter the start hour [0-23] > ");
-    tm_tmp->tm_hour = get_input_digit();
+    the_record->start_hour = (uint8_t)get_input_digit();
     print_string("Please enter the start minute [0-59] > ");
-    tm_tmp->tm_min = get_input_digit();
-    
-    the_record->starttime = mktime(tm_tmp);
+    the_record->start_min = (uint8_t)get_input_digit();
 
     /* endtime */
     print_string("\nPlease enter the end hour [0-23] > ");
-    tm_tmp->tm_hour = get_input_digit();
+    the_record->end_hour = (uint8_t)get_input_digit();
     print_string("\nPlease enter the end minute [0-59] > ");
-    tm_tmp->tm_min = get_input_digit();
-    
-    the_record->endtime = mktime(tm_tmp);
+    the_record->end_min = (uint8_t)get_input_digit();
 
     /* channel */
     print_string("\nPlease enter the channel to record > ");
-    the_record->channel = get_input_digit();
+    the_record->channel = (uint8_t)get_input_digit();
 
-    return (the_record);
+    return the_record;
 }
 
-int add_timer()
+int add_timer(void)
 {
     struct timer_record* record;
 
     record = query_user();
 
-    if (record) {
+    if (record != NULL) {
         add_timer_record(record);
-    } else {
-        return ERROR_CODE;
+        return 0;
     }
-    return 0;
+    return ERROR_CODE;
 }
 
 void add_timer_record(struct timer_record* tr)
 {
-#ifdef OUTPUT
-    {
-        char[50] buf;
-        sprintf(buf, "Curr Index = %d\n", curr_index);
-        _EB_SEND(buf)
+    if (tr == NULL) {
+        return;
     }
-#endif
-    if (curr_index < max_records) {
+    
+    if (curr_index >= 0 && curr_index < max_records) {
         timer_records[curr_index++] = tr;
     } else {
         print_string("\nAll timers used ... timer not added\n");
@@ -103,54 +104,95 @@ void add_timer_record(struct timer_record* tr)
 }
 
 /*
- * Removed record at idx
- * Moves all records past idx, up one slot
+ * Removes record at idx
  */
 void delete_timer_record(int idx)
 {
-    struct timer_record* tr = timer_records[idx];
     int i;
     
-    /* fill in the holes */
-    for (i = idx-1; i < curr_index; i++)
-    {
-        if (0 == timer_records[i]) {
-            break;
-        } else {
-            timer_records[i] = timer_records[i+1];
-        }
+    /* Validate index bounds */
+    if (idx < 0 || idx >= max_records || idx >= curr_index) {
+        print_string("Invalid timer index\n");
+        return;
     }
+    
+    /* Shift records down */
+    for (i = idx; i < curr_index - 1; i++) {
+        timer_records[i] = timer_records[i + 1];
+    }
+    
+    timer_records[curr_index - 1] = NULL;
     curr_index--;
-    free(tr);
+}
+
+/* Helper to convert number to string */
+static void int_to_str(int num, char *buf, int width)
+{
+    int i;
+    for (i = width - 1; i >= 0; i--) {
+        buf[i] = '0' + (num % 10);
+        num /= 10;
+    }
 }
 
 void format_timer_record(int idx, char* buf)
 {
-    char start[BUF_SIZE];
-    char end[BUF_SIZE];
+    struct timer_record* tr;
     
-    struct timer_record* tr = timer_records[idx];
-
-    strftime(start, BUF_SIZE, "%I:%M %p", localtime(&tr->starttime));
-    strftime(end, BUF_SIZE, "%I:%M %p", localtime(&tr->endtime));
-
-    if (tr) {
-        sprintf(buf, "%d\t%s\t%s\t%d\n", idx+1, start, end, tr->channel);
+    if (buf == NULL) {
+        return;
     }
     
+    if (idx < 0 || idx >= max_records || idx >= curr_index) {
+        buf[0] = '\0';
+        return;
+    }
+    
+    tr = timer_records[idx];
+
+    if (tr != NULL) {
+        int pos = 0;
+        
+        /* Record number */
+        buf[pos++] = '0' + (char)((idx + 1) % 10);
+        buf[pos++] = '\t';
+        
+        /* Start time HH:MM */
+        int_to_str(tr->start_hour, &buf[pos], 2);
+        pos += 2;
+        buf[pos++] = ':';
+        int_to_str(tr->start_min, &buf[pos], 2);
+        pos += 2;
+        buf[pos++] = '\t';
+        
+        /* End time HH:MM */
+        int_to_str(tr->end_hour, &buf[pos], 2);
+        pos += 2;
+        buf[pos++] = ':';
+        int_to_str(tr->end_min, &buf[pos], 2);
+        pos += 2;
+        buf[pos++] = '\t';
+        
+        /* Channel */
+        buf[pos++] = '0' + (char)(tr->channel % 10);
+        buf[pos++] = '\n';
+        buf[pos] = '\0';
+    } else {
+        buf[0] = '\0';
+    }
 }
 
-void list_timers()
+void list_timers(void)
 {
     char buf[BUF_SIZE];
     int i;
+    
     print_string("\n\nCurrent Set Timers");
-    print_string("\nRecord#\tStart Time\tEnd Time\tChannel\n");
-    for (i = 0; i < curr_index; i++)
-    {
+    print_string("\nRec#\tStart\tEnd\tCh\n");
+    
+    for (i = 0; i < curr_index; i++) {
         format_timer_record(i, buf);
         print_string(buf);
     }
     print_string("\n\n");
 }
-
