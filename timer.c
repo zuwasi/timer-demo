@@ -49,26 +49,47 @@ void uninit_timer()
  */
 struct timer_record* query_user()
 {
-    int start_h, start_m, end_h, end_m;
+    /*
+     * FIX: 15-Dec-2025 Daniel Liezrowice
+     * Issue: BD-PB-VOVR - Variables start_m, end_h, end_m were declared but never used.
+     * Parasoft Flow Analysis detected these as unused values on any reachable path.
+     * Resolution: Removed unused variables to eliminate dead code warning.
+     * Only start_h is retained as it is actually used in the function.
+     */
+    int start_h;
     struct timer_record* the_record;
-    struct timer_record* backup_record;  /* BUG #3: Memory leak on error path */
     time_t timer;
     struct tm* tm_tmp;
 
     timer = time(NULL);
     tm_tmp = localtime(&timer);
     
+    /*
+     * FIX: 15-Dec-2025 Daniel Liezrowice
+     * Issue: BD-PB-NP and BD-PB-CHECKRETGEN - malloc() return value was not checked.
+     * Parasoft Flow Analysis detected that the_record could be NULL if malloc fails,
+     * and the subsequent memset() would dereference a null pointer causing undefined behavior.
+     * Resolution: Added NULL check after malloc() and return NULL on allocation failure.
+     * This prevents null pointer dereference and properly propagates allocation failures to caller.
+     */
     the_record = (struct timer_record*)malloc(sizeof(struct timer_record));
+    if (the_record == NULL) {
+        return NULL;
+    }
     memset(the_record, 0, sizeof(struct timer_record));
     
-    /* BUG #3: MEMORY LEAK ON ERROR PATH
-     * backup_record is allocated but never freed if we return normally.
-     * Flow analysis detects that this allocation leaks on the normal return path.
+    /*
+     * FIX: 15-Dec-2025 Daniel Liezrowice
+     * Issue: BD-PB-MEMOPT and BD-RES-LEAKS - backup_record was allocated but never used or freed.
+     * Parasoft Flow Analysis detected two problems:
+     * 1. The memcpy call could be optimized out by the compiler since backup_record
+     *    was never read after being written to (BD-PB-MEMOPT).
+     * 2. The allocated memory for backup_record was never freed, causing a memory leak
+     *    on the normal return path (BD-RES-LEAKS).
+     * Resolution: Removed the entire backup_record allocation and memcpy operation
+     * as it served no functional purpose. If backup functionality is needed in the future,
+     * it should be properly implemented with a clear use case and proper cleanup.
      */
-    backup_record = (struct timer_record*)malloc(sizeof(struct timer_record));
-    if (backup_record) {
-        memcpy(backup_record, the_record, sizeof(struct timer_record));
-    }
     
     /* starttime */
     print_string("Please enter the start hour [0-23] > ");
@@ -141,49 +162,91 @@ void add_timer_record(struct timer_record* tr)
 /*
  * Removed record at idx
  * Moves all records past idx, up one slot
+ *
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Multiple issues were fixed in this function:
+ *
+ * Issue 1: BD-SECURITY-ARRAY - Tainted data from user input (idx parameter) was used
+ *          directly as an array index without validation. If idx < 0 or idx >= max_records,
+ *          this would cause out-of-bounds array access leading to undefined behavior.
+ *          Resolution: Added bounds checking at function entry to validate idx is within
+ *          valid range [0, max_records-1]. Function returns early if idx is invalid.
+ *
+ * Issue 2: BD-PB-ARRAY - The loop "for (i = idx-1; ...)" would access timer_records[-1]
+ *          when idx=0, causing array out-of-bounds access at index -1.
+ *          Resolution: Changed loop initialization from "i = idx-1" to "i = idx" to ensure
+ *          the loop starts at a valid index and properly shifts records down.
+ *
+ * Issue 3: BD-SECURITY-ARRAY - The expression "timer_records[i+1]" could access index 100
+ *          (out of bounds) when i=99 (max_records-1).
+ *          Resolution: Changed loop condition to "i < curr_index - 1" to prevent i+1
+ *          from exceeding the valid array bounds.
+ *
+ * Issue 4: Double-free bug - tr_copy was an alias to tr, and both were freed causing
+ *          double-free undefined behavior.
+ *          Resolution: Removed tr_copy variable and the conditional double-free code entirely.
  */
 void delete_timer_record(int idx)
 {
-    struct timer_record* tr = timer_records[idx];
-    struct timer_record* tr_copy = tr;  /* BUG #7: Sets up double-free */
+    struct timer_record* tr;
     int i;
     
-    /* fill in the holes */
-    for (i = idx-1; i < curr_index; i++)
-    {
-        if (0 == timer_records[i]) {
-            break;
-        } else {
-            timer_records[i] = timer_records[i+1];
-        }
+    /* Bounds validation to prevent out-of-bounds array access */
+    if (idx < 0 || idx >= max_records) {
+        return;
     }
-    curr_index--;
-    free(tr);
     
-    /* BUG #7: DOUBLE FREE
-     * tr_copy still points to the same memory as tr.
-     * Freeing tr_copy after tr causes double-free.
-     * Flow analysis tracks pointer aliasing to detect this.
-     */
-    if (idx == 0 && tr_copy != NULL) {
-        free(tr_copy);  /* Double free! tr_copy aliases tr */
+    tr = timer_records[idx];
+    if (tr == NULL) {
+        return;
     }
+    
+    /* Shift records down to fill the hole left by deleted record */
+    for (i = idx; i < curr_index - 1; i++)
+    {
+        timer_records[i] = timer_records[i+1];
+    }
+    
+    /* Clear the last slot and decrement count */
+    if (curr_index > 0) {
+        timer_records[curr_index - 1] = NULL;
+        curr_index--;
+    }
+    
+    free(tr);
 }
 
+/*
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Issue: BD-PB-CC - The condition "if (tr)" always evaluated to true because tr was
+ *        already dereferenced in the strftime() calls above (tr->starttime, tr->endtime).
+ *        Parasoft Flow Analysis detected this as a senseless condition - if tr was NULL,
+ *        the program would have already crashed before reaching the if statement.
+ * Resolution: Moved the NULL check to BEFORE any dereference of tr. Now the function
+ *        returns early if tr is NULL, preventing null pointer dereference in strftime().
+ *        Also added bounds checking for idx to prevent out-of-bounds array access.
+ */
 void format_timer_record(int idx, char* buf)
 {
     char start[BUF_SIZE];
     char end[BUF_SIZE];
+    struct timer_record* tr;
     
-    struct timer_record* tr = timer_records[idx];
+    /* Validate idx bounds and buf pointer */
+    if (idx < 0 || idx >= max_records || buf == NULL) {
+        return;
+    }
+    
+    tr = timer_records[idx];
+    
+    /* Check tr BEFORE dereferencing to avoid null pointer access */
+    if (tr == NULL) {
+        return;
+    }
 
     strftime(start, BUF_SIZE, "%I:%M %p", localtime(&tr->starttime));
     strftime(end, BUF_SIZE, "%I:%M %p", localtime(&tr->endtime));
-
-    if (tr) {
-        sprintf(buf, "%d\t%s\t%s\t%d\n", idx+1, start, end, tr->channel);
-    }
-    
+    sprintf(buf, "%d\t%s\t%s\t%d\n", idx+1, start, end, tr->channel);
 }
 
 void list_timers()
