@@ -35,9 +35,7 @@ pipeline {
                     -localsettings "%WORKSPACE%\\cpptestcli.properties" ^
                     -config "builtin://Recommended Rules" ^
                     -compiler gcc_11-64 ^
-                    -module . ^
-                    -include "%WORKSPACE%\\*.c" ^
-                    -include "%WORKSPACE%\\*.h" ^
+                    -input "%WORKSPACE%\\build\\compile_commands.json" ^
                     -report "%WORKSPACE%\\reports"
                 """
             }
