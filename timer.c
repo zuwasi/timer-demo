@@ -123,24 +123,33 @@ void init_timer()
     memset(timer_records, 0, sizeof(struct timer_record*) * BUF_SIZE); 
 }
 
+/*
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Issue 1: BD-SECURITY-TDCONSOLE - Tainted data (cached_record->channel) from user input
+ *          was printed directly to console without validation.
+ * Issue 2: Use-after-free - cached_record was accessed after being freed by delete_timer_record.
+ * Resolution: Save the channel value BEFORE freeing records, validate it's in reasonable range,
+ *            then print the validated value. Set cached_record to NULL after use.
+ */
 void uninit_timer()
 {
-    /* Remove all timer records */
     int i;
+    int last_channel = -1;
+    
+    if (cached_record != NULL) {
+        last_channel = (int)cached_record->channel;
+    }
 
     for (i = 0; i < max_records; i++) {
         delete_timer_record(i);
     }
     
-    /* BUG #2: USE-AFTER-FREE
-     * cached_record points to freed memory after delete_timer_record frees it.
-     * Accessing cached_record->channel reads freed memory.
-     * Flow analysis tracks that cached_record was freed indirectly.
-     */
-    if (cached_record != NULL) {
+    if (last_channel >= 0 && last_channel <= 9999) {
         print_string("Last cached channel was: ");
-        printf("%d\n", cached_record->channel);  /* Use after free! */
+        printf("%d\n", last_channel);
     }
+    
+    cached_record = NULL;
 }
 
 /*
@@ -190,18 +199,25 @@ struct timer_record* query_user()
      * it should be properly implemented with a clear use case and proper cleanup.
      */
     
-    /* starttime */
+    /*
+     * FIX: 15-Dec-2025 Daniel Liezrowice
+     * Issue 1: BD-SECURITY-TDCONSOLE - Tainted data (seconds_offset derived from user input)
+     *          was printed directly to console without validation.
+     * Issue 2: Integer overflow - start_h * 3600 * 1000 could overflow for large values.
+     * Resolution: Validate start_h is in valid range [0-23] before use. Calculate offset
+     *            only for valid hours, preventing overflow and sanitizing tainted data.
+     */
     print_string("Please enter the start hour [0-23] > ");
     start_h = get_input_digit();
+    
+    if (start_h < 0 || start_h > 23) {
+        start_h = 0;
+    }
     tm_tmp->tm_hour = start_h;
     
-    /* BUG #9: INTEGER OVERFLOW
-     * If user enters large values, multiplication can overflow.
-     * Flow analysis tracks tainted data through arithmetic operations.
-     */
-    if (start_h > 0) {
-        int seconds_offset = start_h * 3600 * 1000;  /* Potential overflow! */
-        printf("Offset: %d\n", seconds_offset);
+    if (start_h > 0 && start_h <= 23) {
+        int seconds_offset = start_h * 3600;
+        printf("Offset: %d seconds\n", seconds_offset);
     }
     
     print_string("Please enter the start minute [0-59] > ");
