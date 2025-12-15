@@ -45,6 +45,10 @@ pipeline {
     post {
         always {
             archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+            recordIssues(
+                tools: [parasoftFindings(pattern: 'reports/*.xml')],
+                qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
+            )
         }
         success {
             echo 'Build and analysis completed successfully!'
