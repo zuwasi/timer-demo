@@ -25,21 +25,28 @@ char* get_formatted_menu_title(int menu_id)
 }
 
 /*
- * BUG #5: BUFFER OVERFLOW
- * User input is used to control copy length without bounds checking.
- * Flow analysis tracks tainted data into dangerous operations.
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Issue: BD-SECURITY-OVERFWR and BD-SECURITY-ARRAY - User input (copy_len) was used directly
+ * as memset size and array index without validation. If user entered value >= 10,
+ * this would cause buffer overflow in temp[10] array.
+ * Resolution: Added bounds validation to ensure copy_len is within valid range [0, 9].
+ * Values outside this range are clamped to prevent buffer overflow.
  */
 void copy_user_input(char* dest, int dest_size)
 {
-    char temp[10];  /* Small buffer */
+    char temp[10];
     int copy_len;
     
     print_string("Enter number of chars to copy: ");
-    copy_len = get_input_digit();  /* Tainted data from user */
+    copy_len = get_input_digit();
     
-    /* BUG: copy_len from user input used without validation */
-    /* If user enters > 10, this overflows temp buffer */
-    memset(temp, 'A', copy_len);  /* Buffer overflow if copy_len > 10! */
+    if (copy_len < 0) {
+        copy_len = 0;
+    } else if (copy_len >= (int)sizeof(temp)) {
+        copy_len = sizeof(temp) - 1;
+    }
+    
+    memset(temp, 'A', copy_len);
     temp[copy_len] = '\0';
     
     if (dest && dest_size > 0) {

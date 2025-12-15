@@ -21,29 +21,29 @@ void display_time()
 }
 
 /*
- * BUG #4: UNINITIALIZED VARIABLE USE
- * The variable 'offset' is only initialized on one path.
- * On the else path, it remains uninitialized but is used.
- * Flow analysis tracks initialization state across branches.
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Issue: BD-PB-NOTINIT - Variable 'offset' was only initialized on one branch (use_dst=true).
+ * On the else path, offset remained uninitialized causing undefined behavior.
+ * Resolution: Initialize offset to 0 at declaration to ensure it has a valid value on all paths.
  */
 int calculate_time_offset(int hours, int use_dst)
 {
-    int offset;  /* Not initialized! */
+    int offset = 0;
     int result;
     
     if (use_dst) {
-        offset = 3600;  /* DST offset in seconds */
+        offset = 3600;
     }
-    /* BUG: offset not initialized on else path! */
     
-    result = hours * 3600 + offset;  /* Use of potentially uninitialized 'offset' */
+    result = hours * 3600 + offset;
     return result;
 }
 
 /*
- * BUG #10: RESOURCE LEAK - FILE NOT CLOSED
- * File is opened but not closed on one execution path.
- * Flow analysis tracks resource state across all paths.
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Issue: BD-RES-LEAKS - File handle 'fp' was not closed on the error path when time_str was NULL.
+ * This caused a resource leak as the file remained open.
+ * Resolution: Added fclose(fp) before the early return when time_str is NULL.
  */
 void log_time_to_file(const char* filename)
 {
@@ -53,18 +53,19 @@ void log_time_to_file(const char* filename)
     
     fp = fopen(filename, "a");
     if (fp == NULL) {
-        return;  /* OK - file not opened */
+        return;
     }
     
     now = time(NULL);
     time_str = ctime(&now);
     
     if (time_str == NULL) {
-        return;  /* BUG: fp is open but not closed! Resource leak! */
+        fclose(fp);
+        return;
     }
     
     fprintf(fp, "Time: %s", time_str);
-    fclose(fp);  /* Only closed on success path */
+    fclose(fp);
 }
 
 /* 

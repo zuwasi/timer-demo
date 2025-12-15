@@ -19,6 +19,105 @@ const int max_records = BUF_SIZE;
 static int curr_index = 0;
 static struct timer_record* cached_record = NULL;  /* BUG #2: Used for use-after-free demo */
 
+/*
+ * WATCHDOG TIMER - 15-Dec-2025 Daniel Liezrowice
+ * A simple software watchdog timer with 10 second expiration.
+ * Must be periodically "kicked" to prevent expiration.
+ * If not kicked within the timeout period, watchdog_expired flag is set.
+ */
+#define WATCHDOG_TIMEOUT_SEC 10
+
+static time_t watchdog_last_kick = 0;
+static int watchdog_enabled = 0;
+static int watchdog_expired = 0;
+
+/*
+ * Initialize and start the watchdog timer
+ */
+void watchdog_init(void)
+{
+    watchdog_last_kick = time(NULL);
+    watchdog_enabled = 1;
+    watchdog_expired = 0;
+    print_string("Watchdog timer initialized (10 second timeout)\n");
+}
+
+/*
+ * Kick (reset) the watchdog timer to prevent expiration
+ * Must be called periodically within the 10 second window
+ */
+void watchdog_kick(void)
+{
+    if (watchdog_enabled) {
+        watchdog_last_kick = time(NULL);
+        watchdog_expired = 0;
+    }
+}
+
+/*
+ * Check if watchdog has expired
+ * Returns: 1 if expired, 0 if still active
+ */
+int watchdog_check(void)
+{
+    time_t now;
+    
+    if (!watchdog_enabled) {
+        return 0;
+    }
+    
+    now = time(NULL);
+    if (difftime(now, watchdog_last_kick) >= WATCHDOG_TIMEOUT_SEC) {
+        watchdog_expired = 1;
+        print_string("WARNING: Watchdog timer expired!\n");
+        return 1;
+    }
+    
+    return 0;
+}
+
+/*
+ * Disable the watchdog timer
+ */
+void watchdog_disable(void)
+{
+    watchdog_enabled = 0;
+    watchdog_expired = 0;
+    print_string("Watchdog timer disabled\n");
+}
+
+/*
+ * Get watchdog status
+ * Returns: 1 if enabled, 0 if disabled
+ */
+int watchdog_is_enabled(void)
+{
+    return watchdog_enabled;
+}
+
+/*
+ * Get time remaining before watchdog expires (in seconds)
+ * Returns: seconds remaining, or 0 if expired/disabled
+ */
+int watchdog_time_remaining(void)
+{
+    time_t now;
+    double elapsed;
+    
+    if (!watchdog_enabled) {
+        return 0;
+    }
+    
+    now = time(NULL);
+    elapsed = difftime(now, watchdog_last_kick);
+    
+    if (elapsed >= WATCHDOG_TIMEOUT_SEC) {
+        return 0;
+    }
+    
+    return (int)(WATCHDOG_TIMEOUT_SEC - elapsed);
+}
+
 void init_timer()
 {
     memset(timer_records, 0, sizeof(struct timer_record*) * BUF_SIZE); 
@@ -190,8 +289,16 @@ void delete_timer_record(int idx)
 {
     struct timer_record* tr;
     int i;
+    int loop_end;
     
-    /* Bounds validation to prevent out-of-bounds array access */
+    /*
+     * FIX UPDATE: 15-Dec-2025 Daniel Liezrowice
+     * Additional fix for BD-PB-ARRAY and BD-SECURITY-INTOVERF at line 306.
+     * Issue: The loop accessing timer_records[i+1] could still exceed array bounds
+     * because curr_index could be >= max_records, making i+1 >= 100.
+     * Resolution: Added explicit bound calculation for loop_end to ensure i+1 never
+     * exceeds max_records-1. This guarantees all array accesses are within bounds.
+     */
     if (idx < 0 || idx >= max_records) {
         return;
     }
@@ -201,13 +308,16 @@ void delete_timer_record(int idx)
         return;
     }
     
-    /* Shift records down to fill the hole left by deleted record */
-    for (i = idx; i < curr_index - 1; i++)
+    loop_end = curr_index - 1;
+    if (loop_end >= max_records - 1) {
+        loop_end = max_records - 2;
+    }
+    
+    for (i = idx; i < loop_end && i >= 0 && (i + 1) < max_records; i++)
     {
         timer_records[i] = timer_records[i+1];
     }
     
-    /* Clear the last slot and decrement count */
     if (curr_index > 0) {
         timer_records[curr_index - 1] = NULL;
         curr_index--;
@@ -249,16 +359,30 @@ void format_timer_record(int idx, char* buf)
     sprintf(buf, "%d\t%s\t%s\t%d\n", idx+1, start, end, tr->channel);
 }
 
+/*
+ * FIX: 15-Dec-2025 Daniel Liezrowice
+ * Issue: BD-PB-NOTINIT and BD-PB-OVERFNZT - Buffer 'buf' was uninitialized before being
+ * passed to format_timer_record(). If that function returned early (e.g., when tr==NULL),
+ * buf remained uninitialized and was passed to print_string(), causing undefined behavior.
+ * Resolution: Initialize buf to empty string before the loop. Also added check to only
+ * print buf if it contains data (buf[0] != '\0') after format_timer_record returns.
+ */
 void list_timers()
 {
     char buf[BUF_SIZE];
     int i;
+    
+    buf[0] = '\0';
+    
     print_string("\n\nCurrent Set Timers");
     print_string("\nRecord#\tStart Time\tEnd Time\tChannel\n");
     for (i = 0; i < curr_index; i++)
     {
+        buf[0] = '\0';
         format_timer_record(i, buf);
-        print_string(buf);
+        if (buf[0] != '\0') {
+            print_string(buf);
+        }
     }
     print_string("\n\n");
 }
