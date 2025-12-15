@@ -34,7 +34,7 @@ pipeline {
                     "%CPPTEST_HOME%\\cpptestcli.exe" ^
                     -localsettings "%WORKSPACE%\\cpptestcli.properties" ^
                     -config "builtin://Recommended Rules" ^
-                    -compiler gcc_13-64 ^
+                    -compiler gcc_11-64 ^
                     -module . ^
                     -include "%WORKSPACE%\\*.c" ^
                     -include "%WORKSPACE%\\*.h" ^
