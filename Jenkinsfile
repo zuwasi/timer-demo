@@ -3,6 +3,7 @@ pipeline {
     
     environment {
         CPPTEST_HOME = 'C:\\CPP_STD_25-2\\cpptest'
+        PATH = "C:\\mingw64\\mingw64\\bin;${env.PATH}"
     }
     
     stages {
