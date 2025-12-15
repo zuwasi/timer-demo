@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /*
  * Grabs input from stdin
@@ -81,4 +82,50 @@ int get_input_digit()
 int print_string(char* str)
 {
     return (printf(str));
+}
+
+/*
+ * BUG #6: DIVISION BY ZERO
+ * Divisor comes from user input and may be zero.
+ * Flow analysis tracks tainted data to division operations.
+ */
+int calculate_average(int total)
+{
+    int count;
+    int average;
+    
+    print_string("Enter count for average: ");
+    count = get_input_digit();  /* Tainted data from user */
+    
+    /* BUG: No check if count is zero before division */
+    average = total / count;  /* Division by zero if count == 0! */
+    
+    return average;
+}
+
+/*
+ * BUG #1: NULL POINTER DEREFERENCE ON CONDITIONAL PATH  
+ * Pointer is dereferenced before null check on one path.
+ * Flow analysis tracks null state across complex conditionals.
+ */
+int process_input_buffer(char* buffer, int mode)
+{
+    int result = 0;
+    int len;
+    
+    if (mode == 1) {
+        /* Dereference before null check */
+        len = strlen(buffer);  /* BUG: buffer might be NULL! */
+        result = len * 2;
+    }
+    
+    if (buffer == NULL) {
+        return -1;  /* Too late - already dereferenced above! */
+    }
+    
+    if (mode == 2) {
+        result = buffer[0];  /* Safe here due to null check above */
+    }
+    
+    return result;
 }

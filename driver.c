@@ -4,11 +4,49 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "clock.h"
 #include "consts.h"
 #include "inout.h"
 #include "timer.h"
 
+/*
+ * BUG #8: RETURN OF STACK ADDRESS
+ * Returns pointer to local array which goes out of scope.
+ * Flow analysis detects escaping stack addresses.
+ */
+char* get_formatted_menu_title(int menu_id)
+{
+    char local_buffer[50];  /* Local stack variable */
+    
+    sprintf(local_buffer, "=== Menu #%d ===", menu_id);
+    
+    return local_buffer;  /* BUG: Returning address of local variable! */
+}
+
+/*
+ * BUG #5: BUFFER OVERFLOW
+ * User input is used to control copy length without bounds checking.
+ * Flow analysis tracks tainted data into dangerous operations.
+ */
+void copy_user_input(char* dest, int dest_size)
+{
+    char temp[10];  /* Small buffer */
+    int copy_len;
+    
+    print_string("Enter number of chars to copy: ");
+    copy_len = get_input_digit();  /* Tainted data from user */
+    
+    /* BUG: copy_len from user input used without validation */
+    /* If user enters > 10, this overflows temp buffer */
+    memset(temp, 'A', copy_len);  /* Buffer overflow if copy_len > 10! */
+    temp[copy_len] = '\0';
+    
+    if (dest && dest_size > 0) {
+        strncpy(dest, temp, dest_size - 1);
+        dest[dest_size - 1] = '\0';
+    }
+}
 
 int print_menu_get_action()
 {
