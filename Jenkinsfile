@@ -33,7 +33,7 @@ pipeline {
                 bat """
                     "%CPPTEST_HOME%\\cpptestcli.exe" ^
                     -localsettings "%WORKSPACE%\\cpptestcli.properties" ^
-                    -config "builtin://Recommended Rules" ^
+                    -config "builtin://SEI CERT C" ^
                     -compiler gcc_11-64 ^
                     -input "%WORKSPACE%\\build\\compile_commands.json" ^
                     -report "%WORKSPACE%\\reports"
